@@ -310,6 +310,44 @@ export default function LobbyPage() {
     }
   };
 
+  // High-Priority Game Master Action: Initiate Stage 2 (Fishing / Dark Lake)
+  const handleInitiateStage2 = async () => {
+    setIsInitiatingStage(true);
+    setGmMessage(null);
+    try {
+      logMessage("GM_COMMAND: ⚠️ Initiating Stage 2 (Fishing)... Setting gameState/currentStage to 2");
+      const stageRef = ref(database, "gameState/currentStage");
+      await set(stageRef, 2);
+      setGmMessage("⚠️ STAGE 2 INITIATED: gameState/currentStage set to 2. Dark Lake protocol active.");
+      logMessage("GM_SUCCESS: Stage 2 active (gameState/currentStage = 2).");
+    } catch (err: any) {
+      console.error("Failed to initiate Stage 2:", err);
+      setGmMessage(`STAGE 2 INITIATION ERROR: ${err.message || "Failed to update gameState/currentStage"}`);
+      logMessage(`GM_ERROR: Stage 2 initiation failed: ${err.message}`);
+    } finally {
+      setIsInitiatingStage(false);
+    }
+  };
+
+  // High-Priority Game Master Action: Initiate Stage 3 (Laser Grid)
+  const handleInitiateStage3 = async () => {
+    setIsInitiatingStage(true);
+    setGmMessage(null);
+    try {
+      logMessage("GM_COMMAND: ⚠️ Initiating Stage 3 (Laser Grid)... Setting gameState/currentStage to 3");
+      const stageRef = ref(database, "gameState/currentStage");
+      await set(stageRef, 3);
+      setGmMessage("⚠️ STAGE 3 INITIATED: gameState/currentStage set to 3. Laser Grid protocol active.");
+      logMessage("GM_SUCCESS: Stage 3 active (gameState/currentStage = 3).");
+    } catch (err: any) {
+      console.error("Failed to initiate Stage 3:", err);
+      setGmMessage(`STAGE 3 INITIATION ERROR: ${err.message || "Failed to update gameState/currentStage"}`);
+      logMessage(`GM_ERROR: Stage 3 initiation failed: ${err.message}`);
+    } finally {
+      setIsInitiatingStage(false);
+    }
+  };
+
   // Game Master helper: Clear all synthetic bots
   const handleClearBots = async () => {
     setIsClearing(true);
@@ -419,9 +457,19 @@ export default function LobbyPage() {
               </button>
 
               <Link
-                href="/rounds/round-1"
+                href={
+                  currentStage === 3
+                    ? "/rounds/round-3"
+                    : currentStage === 2
+                    ? "/rounds/round-2"
+                    : "/rounds/round-1"
+                }
                 className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold tracking-wider uppercase transition-all shadow-lg ${
-                  currentStage === 1
+                  currentStage === 3
+                    ? "bg-gradient-to-r from-red-600 to-pink-600 text-white font-black hover:opacity-95 shadow-[0_0_20px_rgba(239,68,68,0.6)] animate-pulse border border-red-300"
+                    : currentStage === 2
+                    ? "bg-gradient-to-r from-teal-500 to-cyan-500 text-black font-black hover:opacity-95 shadow-[0_0_20px_rgba(6,182,212,0.6)] animate-pulse border border-cyan-300"
+                    : currentStage === 1
                     ? "bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black hover:opacity-95 shadow-[0_0_20px_rgba(245,158,11,0.6)] animate-pulse border border-yellow-300"
                     : aliveCount >= TARGET_MAX_PLAYERS
                     ? "bg-gradient-to-r from-cyan-500 to-emerald-500 text-black hover:opacity-95 shadow-[0_0_20px_rgba(0,255,102,0.4)] animate-pulse"
@@ -429,7 +477,17 @@ export default function LobbyPage() {
                 }`}
               >
                 <Play className="w-4 h-4 fill-current" />
-                <span>{currentStage === 1 ? "⚠️ ENTER FLIGHT 404 (STAGE 1)" : aliveCount >= TARGET_MAX_PLAYERS ? "INITIALIZE ROUND 1" : "ENTER ARENA"}</span>
+                <span>
+                  {currentStage === 3
+                    ? "⚠️ ENTER LASER GRID (STAGE 3)"
+                    : currentStage === 2
+                    ? "⚠️ ENTER FISHING (STAGE 2)"
+                    : currentStage === 1
+                    ? "⚠️ ENTER FLIGHT 404 (STAGE 1)"
+                    : aliveCount >= TARGET_MAX_PLAYERS
+                    ? "INITIALIZE ROUND 1"
+                    : "ENTER ARENA"}
+                </span>
               </Link>
             </div>
           </div>
@@ -490,8 +548,8 @@ export default function LobbyPage() {
           </div>
         )}
 
-        {/* Stage 1 Broadcast Banner */}
-        {currentStage === 1 && (
+        {/* Active Stage Broadcast Banner */}
+        {typeof currentStage === "number" && currentStage >= 1 && currentStage <= 3 && (
           <div className="mb-6 p-4 rounded-xl border border-amber-500/50 bg-gradient-to-r from-amber-950/80 via-orange-950/70 to-black/80 text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_0_30px_rgba(245,158,11,0.2)]">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-400">
@@ -499,18 +557,28 @@ export default function LobbyPage() {
               </div>
               <div>
                 <span className="text-xs font-black tracking-widest text-amber-400 uppercase">
-                  CRITICAL BROADCAST // STAGE 1 INITIATED
+                  CRITICAL BROADCAST // STAGE {currentStage} ACTIVE: {
+                    currentStage === 1 ? "FLIGHT 404 (CABIN PROTOCOL)" :
+                    currentStage === 2 ? "FISHING (DARK LAKE REBREATHER)" :
+                    "QUANTUM LASER GRID (5x5 MATRIX)"
+                  }
                 </span>
                 <p className="text-xs text-zinc-300 mt-0.5">
-                  Flight 404 cabin sequence is active in Firebase RTDB. Operatives must enter the cabin to calibrate seat positions.
+                  {currentStage === 1 && "Flight 404 cabin decompression sequence engaged in Firebase RTDB. Calibrate your seat (1-20)."}
+                  {currentStage === 2 && "The Jack's searchlight is sweeping the dark lake. Submerge into the depths to evade detection."}
+                  {currentStage === 3 && "Quantum laser matrix activated. Realtime flight speed dictates lethal laser coordinates."}
                 </p>
               </div>
             </div>
             <Link
-              href="/rounds/round-1"
-              className="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black text-xs tracking-wider uppercase flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(245,158,11,0.5)]"
+              href={
+                currentStage === 3 ? "/rounds/round-3" :
+                currentStage === 2 ? "/rounds/round-2" :
+                "/rounds/round-1"
+              }
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black text-xs tracking-wider uppercase flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(245,158,11,0.5)] flex-shrink-0"
             >
-              <span>BOARD CABIN &gt;&gt;</span>
+              <span>{currentStage === 1 ? "BOARD CABIN >>" : currentStage === 2 ? "ENTER LAKE >>" : "ENTER MATRIX >>"}</span>
             </Link>
           </div>
         )}
@@ -670,7 +738,7 @@ export default function LobbyPage() {
                 <button
                   onClick={handleInitiateStage1}
                   disabled={isInitiatingStage || isInjecting || isClearing || isShuffling || isSyncingAirspace}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 hover:from-amber-400 hover:to-red-500 text-black font-black text-xs tracking-wider uppercase transition-all shadow-[0_0_25px_rgba(245,158,11,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 border-2 border-yellow-300 animate-pulse"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 hover:from-amber-400 hover:to-red-500 text-black font-black text-xs tracking-wider uppercase transition-all shadow-[0_0_25px_rgba(245,158,11,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 border-2 border-yellow-300 animate-pulse cursor-pointer"
                   title="Update Firebase Realtime Database node gameState/currentStage to 1"
                 >
                   {isInitiatingStage ? (
@@ -680,6 +748,40 @@ export default function LobbyPage() {
                   )}
                   <span>
                     {isInitiatingStage ? "INITIATING..." : "⚠️ INITIATE STAGE 1 (FLIGHT 404)"}
+                  </span>
+                </button>
+
+                {/* High-Priority GM Button: INITIATE STAGE 2 */}
+                <button
+                  onClick={handleInitiateStage2}
+                  disabled={isInitiatingStage || isInjecting || isClearing || isShuffling || isSyncingAirspace}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-600 hover:from-teal-400 hover:to-blue-500 text-black font-black text-xs tracking-wider uppercase transition-all shadow-[0_0_25px_rgba(6,182,212,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 border-2 border-cyan-300 animate-pulse cursor-pointer"
+                  title="Update Firebase Realtime Database node gameState/currentStage to 2"
+                >
+                  {isInitiatingStage ? (
+                    <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-black stroke-[2.5]" />
+                  )}
+                  <span>
+                    {isInitiatingStage ? "INITIATING..." : "⚠️ INITIATE STAGE 2"}
+                  </span>
+                </button>
+
+                {/* High-Priority GM Button: INITIATE STAGE 3 */}
+                <button
+                  onClick={handleInitiateStage3}
+                  disabled={isInitiatingStage || isInjecting || isClearing || isShuffling || isSyncingAirspace}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white font-black text-xs tracking-wider uppercase transition-all shadow-[0_0_25px_rgba(239,68,68,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 border-2 border-red-400 animate-pulse cursor-pointer"
+                  title="Update Firebase Realtime Database node gameState/currentStage to 3"
+                >
+                  {isInitiatingStage ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 stroke-[2.5]" />
+                  )}
+                  <span>
+                    {isInitiatingStage ? "INITIATING..." : "⚠️ INITIATE STAGE 3"}
                   </span>
                 </button>
 
