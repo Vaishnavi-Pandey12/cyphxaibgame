@@ -10,17 +10,17 @@ import { Aircraft } from "@/lib/airplanes";
 import { 
   Waves, 
   Eye, 
-  Skull, 
   AlertTriangle, 
   Clock, 
   FastForward, 
-  ShieldCheck, 
   ChevronRight,
   ArrowUpCircle,
   ArrowDownCircle,
   Wind
 } from "lucide-react";
 import { EliminationScreen } from "@/components/game/EliminationScreen";
+import { Header } from "@/components/theme/Header";
+import { RulesModal } from "@/components/game/RulesModal";
 
 export default function Round2Page() {
   const { user } = useAuth();
@@ -35,9 +35,10 @@ export default function Round2Page() {
   const [isSubmerged, setIsSubmerged] = useState<boolean>(true); // start underwater safely
   const [oxygen, setOxygen] = useState<number>(10); // 10 seconds oxygen
   const [flashlightCol, setFlashlightCol] = useState<number>(0);
-  const [timeLeft, setTimeLeft] = useState<number>(120);
+  const [timeLeft, setTimeLeft] = useState<number>(60);
   const [isDone, setIsDone] = useState<boolean>(false);
   const [resolving, setResolving] = useState<boolean>(false);
+  const [showRules, setShowRules] = useState(true);
 
   const myCol = useMemo(() => {
     return user ? playerColumn(user.uid) : 4;
@@ -86,11 +87,9 @@ export default function Round2Page() {
     if (isDone || playerStatus !== "alive") return;
 
     const interval = setInterval(() => {
-      // 1. Update Flashlight Col
       const currentFlashlight = computeFlashlightX(aircraftSnapshot, roundStartedAt);
       setFlashlightCol(currentFlashlight);
 
-      // 2. Oxygen logic
       setOxygen((prevOx) => {
         if (isSubmerged) {
           const next = Math.max(0, prevOx - 0.25);
@@ -99,12 +98,10 @@ export default function Round2Page() {
           }
           return next;
         } else {
-          // Surfaced: Refill oxygen quickly
           return Math.min(10, prevOx + 2);
         }
       });
 
-      // 3. Flashlight hit detection if surfaced
       if (!isSubmerged && currentFlashlight === myCol) {
         triggerElimination("The Jack's searchlight caught you on the surface.");
       }
@@ -153,202 +150,202 @@ export default function Round2Page() {
       <EliminationScreen
         title="YOU DIED"
         message={eliminationReason || "Eliminated in Fishing - Caught by searchlight or suffocated underwater."}
-        roundName="ROUND 02 // FISHING - SURVIVE THE JACK"
+        roundName="ROUND 02 // FISHING - SURVIVE THE JACK [♠ SPADES]"
         autoRedirectSeconds={5}
       />
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#030712] text-zinc-300 font-mono p-4 md:p-8">
-      <header className="max-w-4xl mx-auto mb-8 flex items-center justify-between">
-        <div>
-          <div className="text-teal-400 font-bold text-xs tracking-widest mb-1">ROUND 02</div>
-          <h1 className="text-3xl font-black text-white">FISHING // SURVIVE THE JACK</h1>
-        </div>
+    <div className="min-h-screen bg-[#0e0e0e] text-[#e5e2e1] font-mono flex flex-col justify-between select-none">
+      {showRules && (
+        <RulesModal roundIndex={1} onDismiss={() => setShowRules(false)} />
+      )}
+      <Header />
 
-        {!isDone ? (
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-2xl font-black text-cyan-400 font-mono">
-              <Clock className="w-6 h-6 text-cyan-500" />
-              {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, "0")}
+      <div className="relative z-10 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-8">
+        <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-[#1c1b1b] p-5 border border-[#353534] shadow-xl">
+          <div>
+            <div className="text-[#ff544b] font-bold text-xs tracking-[0.25em] mb-1 flex items-center gap-1.5">
+              <span>♠</span> <span>TRIAL 02 // PHYSICAL & ENDURANCE</span>
             </div>
+            <h1 className="font-['Cinzel'] text-3xl font-black text-[#ffdad6] tracking-wider uppercase">
+              FISHING // SURVIVE THE JACK
+            </h1>
+          </div>
+
+          {!isDone ? (
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-2xl font-black text-[#ff544b] font-mono">
+                <Clock className="w-6 h-6 text-[#ff544b]" />
+                {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, "0")}
+              </div>
+              <button
+                onClick={handleResolve}
+                disabled={resolving}
+                className="flex items-center gap-1 px-3 py-1.5 bg-[#201f1f] hover:bg-[#2a2a2a] border border-[#353534] text-xs font-bold text-[#ffb4ab] transition-colors cursor-pointer uppercase"
+              >
+                <FastForward className="w-3 h-3" /> SKIP
+              </button>
+            </div>
+          ) : (
             <button
-              onClick={handleResolve}
-              disabled={resolving}
-              className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-xs font-bold text-white transition-colors"
+              onClick={handleNextRound}
+              className="flex items-center gap-2 px-6 py-3 bg-[#ff544b] hover:bg-[#ffb4ab] text-[#5c0005] font-black text-xs uppercase tracking-widest rounded transition-colors cursor-pointer shadow-[0_0_20px_rgba(255,84,75,0.4)]"
             >
-              <FastForward className="w-3 h-3" /> SKIP
+              NEXT ROUND <ChevronRight className="w-4 h-4" />
             </button>
-          </div>
-        ) : (
-          <button
-            onClick={handleNextRound}
-            className="flex items-center gap-2 px-6 py-3 bg-teal-500 hover:bg-teal-400 text-black font-black rounded-lg transition-colors shadow-[0_0_20px_rgba(20,184,166,0.3)]"
-          >
-            NEXT ROUND <ChevronRight className="w-5 h-5" />
-          </button>
-        )}
-      </header>
+          )}
+        </header>
 
-      <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Telemetry & Rules */}
-        <div className="md:col-span-1 space-y-4">
-          <div className="bg-teal-950/20 border border-teal-500/30 rounded-xl p-4">
-            <h2 className="text-teal-400 font-bold text-sm mb-2 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4" /> PROTOCOL RULES
-            </h2>
-            <p className="text-xs text-teal-200/70 mb-2 leading-relaxed">
-              1. Stay underwater to hide from the searchlight.
-            </p>
-            <p className="text-xs text-teal-200/70 mb-2 leading-relaxed">
-              2. Oxygen lasts 10 seconds max. Surface to breathe when the searchlight is far from your column ({myCol}).
-            </p>
-            <p className="text-xs text-teal-200/70 leading-relaxed">
-              3. If you surface while the searchlight shines on your column, you are immediately terminated.
-            </p>
-          </div>
-
-          <div className="bg-black/40 border border-zinc-800 rounded-lg p-4">
-            <h3 className="text-xs font-bold text-zinc-500 tracking-widest mb-2">TARGET TELEMETRY</h3>
-            <div className="text-xs text-zinc-400 space-y-1">
-              <div>TRACKING: <span className="text-cyan-400 font-bold">{aircraftSnapshot[1]?.callsign || "SKYNET_02"}</span></div>
-              <div>SPEED VECTOR: <span className="text-white font-mono">{aircraftSnapshot[1]?.speed || 450} kts</span></div>
-              <div>SWEEP INTERVAL: <span className="text-teal-400 font-mono">5.0s</span></div>
-              <div>ASSIGNED SECTOR: <span className="text-white font-bold">COL {myCol}</span></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Lake View & Player Controls */}
-        <div className="md:col-span-2 space-y-6">
-          {/* Lake Visual Grid (10 Columns) */}
-          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-6 relative overflow-hidden">
-            <div className="text-xs text-zinc-500 font-bold uppercase tracking-widest mb-4 flex justify-between items-center">
-              <span>LAKE SECTORS (0 - 9)</span>
-              <span className="text-teal-400 flex items-center gap-1">
-                <Eye className="w-4 h-4 animate-pulse" /> SEARCHLIGHT AT COL {flashlightCol}
-              </span>
+        <main className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-1 space-y-4">
+            <div className="bg-[#1c1b1b] border border-[#ff544b]/30 p-4 shadow-md">
+              <h2 className="text-[#ffb4ab] font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-[#ff544b]" /> SONAR SEARCHLIGHT RULES
+              </h2>
+              <p className="text-xs text-[#af8783] mb-2 leading-relaxed">
+                1. Stay submerged to evade the sweeping spotlight.
+              </p>
+              <p className="text-xs text-[#af8783] mb-2 leading-relaxed">
+                2. Oxygen depletes in 10s. Surface when the searchlight leaves your column ({myCol}).
+              </p>
+              <p className="text-xs text-[#ff544b] leading-relaxed font-bold">
+                3. Surfacing while the beam is on your column triggers immediate expulsion.
+              </p>
             </div>
 
-            {/* Surface Line with Searchlight */}
-            <div className="grid grid-cols-10 gap-1 mb-2">
-              {Array.from({ length: 10 }).map((_, col) => {
-                const isBeam = col === flashlightCol;
-                const isMe = col === myCol;
-                return (
-                  <div key={col} className="flex flex-col items-center">
-                    <div
-                      className={`w-full h-8 rounded flex items-center justify-center text-[10px] font-mono font-bold transition-all ${
-                        isBeam
-                          ? "bg-amber-400 text-black shadow-[0_0_15px_rgba(251,191,36,0.8)] border border-amber-300"
-                          : "bg-zinc-900 border border-zinc-800 text-zinc-600"
-                      }`}
-                    >
-                      {col}
-                    </div>
-                    {/* Beam cone coming down */}
-                    <div
-                      className={`w-full h-24 transition-all opacity-70 ${
-                        isBeam
-                          ? "bg-gradient-to-b from-amber-400/40 via-amber-400/10 to-transparent"
-                          : "bg-transparent"
-                      }`}
-                    />
-                  </div>
-                );
-              })}
+            <div className="bg-[#1c1b1b] border border-[#353534] p-4 shadow-sm">
+              <h3 className="text-xs font-bold text-[#af8783] tracking-widest uppercase mb-2">TELEMETRY LOCK</h3>
+              <div className="text-xs space-y-1 text-[#e5e2e1]">
+                <div>TRACKING: <span className="text-[#ffdad6] font-bold">{aircraftSnapshot[1]?.callsign || "SKYNET_02"}</span></div>
+                <div>AIRSPEED: <span className="text-white font-mono">{aircraftSnapshot[1]?.speed || 450} kts</span></div>
+                <div>ASSIGNED SECTOR: <span className="text-[#ff544b] font-bold">COLUMN {myCol}</span></div>
+              </div>
             </div>
+          </div>
 
-            {/* Water Depth Container */}
-            <div className="w-full h-44 rounded-xl bg-gradient-to-b from-cyan-950/60 to-blue-950/80 border border-cyan-800/40 relative flex flex-col justify-between p-4">
-              {/* Surface Level */}
-              <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2 text-[10px] text-cyan-400 font-bold">
-                <span className="flex items-center gap-1"><Waves className="w-3.5 h-3.5" /> SURFACE</span>
-                <span>{!isSubmerged ? "SURFACED (REFILLING O2)" : "EMPTY"}</span>
+          <div className="md:col-span-2 space-y-6">
+            <div className="bg-[#1c1b1b] border border-[#353534] p-6 relative overflow-hidden shadow-xl">
+              <div className="text-xs text-[#af8783] font-bold uppercase tracking-wider mb-4 flex justify-between items-center">
+                <span>LAKE SECTORS (0 - 9)</span>
+                <span className="text-[#ff544b] flex items-center gap-1 font-bold">
+                  <Eye className="w-4 h-4 animate-pulse" /> SEARCHLIGHT AT COL {flashlightCol}
+                </span>
               </div>
 
-              {/* Player Position Representation */}
-              <div className="grid grid-cols-10 gap-1 h-full items-center">
+              {/* Surface Line with Searchlight */}
+              <div className="grid grid-cols-10 gap-1 mb-2">
                 {Array.from({ length: 10 }).map((_, col) => {
-                  const isMe = col === myCol;
-                  if (!isMe) return <div key={col} />;
+                  const isBeam = col === flashlightCol;
                   return (
-                    <div
-                      key={col}
-                      className={`flex flex-col items-center transition-all duration-300 ${
-                        !isSubmerged ? "-translate-y-8" : "translate-y-4"
-                      }`}
-                    >
-                      <div className="px-2 py-1 bg-cyan-400 text-black font-black text-[10px] rounded shadow-[0_0_10px_rgba(0,240,255,0.6)]">
-                        YOU
+                    <div key={col} className="flex flex-col items-center">
+                      <div
+                        className={`w-full h-8 flex items-center justify-center text-[10px] font-mono font-bold transition-all border ${
+                          isBeam
+                            ? "bg-[#ff544b] text-[#5c0005] shadow-[0_0_15px_rgba(255,84,75,0.8)] border-white"
+                            : "bg-[#0e0e0e] border-[#353534] text-[#5f3f3b]"
+                        }`}
+                      >
+                        {col}
                       </div>
-                      <span className="text-[9px] text-cyan-200 mt-0.5">
-                        {!isSubmerged ? "UP" : "DEEP"}
-                      </span>
+                      <div
+                        className={`w-full h-20 transition-all ${
+                          isBeam
+                            ? "bg-gradient-to-b from-[#ff544b]/50 via-[#ff544b]/15 to-transparent"
+                            : "bg-transparent"
+                        }`}
+                      />
                     </div>
                   );
                 })}
               </div>
 
-              {/* Underwater Bed Level */}
-              <div className="flex items-center justify-between border-t border-cyan-500/20 pt-2 text-[10px] text-cyan-400/60 font-mono">
-                <span>LAKE BED (SAFE FROM LIGHT)</span>
-                <span>{isSubmerged ? "SUBMERGED (LOSING O2)" : ""}</span>
-              </div>
-            </div>
+              {/* Depth Container */}
+              <div className="w-full h-40 bg-[#0e0e0e] border border-[#353534] relative flex flex-col justify-between p-4">
+                <div className="flex items-center justify-between border-b border-[#353534] pb-2 text-[10px] text-[#ffb4ab] font-bold">
+                  <span className="flex items-center gap-1"><Waves className="w-3.5 h-3.5" /> SURFACE</span>
+                  <span>{!isSubmerged ? "SURFACED (REFILLING O2)" : "SUBMERGED"}</span>
+                </div>
 
-            {/* Oxygen Bar */}
-            <div className="mt-6">
-              <div className="flex justify-between items-center text-xs font-bold mb-2">
-                <span className="flex items-center gap-1.5 text-cyan-400">
-                  <Wind className="w-4 h-4" /> OXYGEN RESERVES
-                </span>
-                <span className={`font-mono ${oxygen < 3 ? "text-red-400 animate-ping" : "text-white"}`}>
-                  {oxygen.toFixed(1)}s / 10.0s
-                </span>
+                {/* Player representation */}
+                <div className="grid grid-cols-10 gap-1 h-full items-center">
+                  {Array.from({ length: 10 }).map((_, col) => {
+                    const isMe = col === myCol;
+                    if (!isMe) return <div key={col} />;
+                    return (
+                      <div
+                        key={col}
+                        className={`flex flex-col items-center transition-all duration-300 ${
+                          !isSubmerged ? "-translate-y-6" : "translate-y-3"
+                        }`}
+                      >
+                        <div className="px-2 py-1 bg-[#ff544b] text-[#5c0005] font-black text-[10px] rounded shadow-[0_0_10px_rgba(255,84,75,0.7)]">
+                          YOU
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="flex items-center justify-between border-t border-[#353534] pt-2 text-[10px] text-[#af8783] font-mono">
+                  <span>LAKE DEPTH (SONAR SHIELD)</span>
+                  <span>{isSubmerged ? "HIDDEN (O2 DRAINING)" : "EXPOSED"}</span>
+                </div>
               </div>
-              <div className="w-full bg-zinc-900 h-3 rounded-full overflow-hidden border border-zinc-800">
-                <div
-                  className={`h-full transition-all duration-200 ${
-                    oxygen < 3
-                      ? "bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]"
-                      : "bg-cyan-400 shadow-[0_0_10px_rgba(0,240,255,0.5)]"
+
+              {/* Oxygen Bar */}
+              <div className="mt-6">
+                <div className="flex justify-between items-center text-xs font-bold mb-2">
+                  <span className="flex items-center gap-1.5 text-[#ffb4ab]">
+                    <Wind className="w-4 h-4" /> OXYGEN RESERVES
+                  </span>
+                  <span className={`font-mono ${oxygen < 3 ? "text-[#ff544b] animate-ping" : "text-white"}`}>
+                    {oxygen.toFixed(1)}s / 10.0s
+                  </span>
+                </div>
+                <div className="w-full bg-[#0e0e0e] h-2.5 overflow-hidden border border-[#353534]">
+                  <div
+                    className={`h-full transition-all duration-200 ${
+                      oxygen < 3
+                        ? "bg-[#93000a] shadow-[0_0_10px_rgba(255,84,75,0.8)]"
+                        : "bg-[#ff544b] shadow-[0_0_10px_rgba(255,84,75,0.5)]"
+                    }`}
+                    style={{ width: `${(oxygen / 10) * 100}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Stance Controls */}
+              <div className="mt-6 flex gap-4">
+                <button
+                  disabled={isDone}
+                  onClick={() => setIsSubmerged(true)}
+                  className={`flex-1 py-4 border-2 font-mono font-bold text-xs uppercase flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    isSubmerged
+                      ? "bg-[#2a2a2a] border-[#ff544b] text-[#ffdad6] shadow-[0_0_15px_rgba(255,84,75,0.3)]"
+                      : "bg-[#0e0e0e] border-[#353534] text-[#af8783] hover:border-[#5f3f3b]"
                   }`}
-                  style={{ width: `${(oxygen / 10) * 100}%` }}
-                />
+                >
+                  <ArrowDownCircle className="w-5 h-5" /> DIVE (GO UNDERWATER)
+                </button>
+
+                <button
+                  disabled={isDone}
+                  onClick={() => setIsSubmerged(false)}
+                  className={`flex-1 py-4 border-2 font-mono font-bold text-xs uppercase flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                    !isSubmerged
+                      ? "bg-[#920703] border-[#ff544b] text-white shadow-[0_0_15px_rgba(255,84,75,0.5)]"
+                      : "bg-[#0e0e0e] border-[#353534] text-[#af8783] hover:border-[#5f3f3b]"
+                  }`}
+                >
+                  <ArrowUpCircle className="w-5 h-5" /> SURFACE (COME UP & BREATHE)
+                </button>
               </div>
-            </div>
-
-            {/* Stance Controls */}
-            <div className="mt-6 flex gap-4">
-              <button
-                disabled={isDone}
-                onClick={() => setIsSubmerged(true)}
-                className={`flex-1 py-4 rounded-xl border-2 font-black text-sm flex items-center justify-center gap-2 transition-all ${
-                  isSubmerged
-                    ? "bg-cyan-950/40 border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(0,240,255,0.2)]"
-                    : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700"
-                }`}
-              >
-                <ArrowDownCircle className="w-5 h-5" /> DIVE (GO UNDERWATER)
-              </button>
-
-              <button
-                disabled={isDone}
-                onClick={() => setIsSubmerged(false)}
-                className={`flex-1 py-4 rounded-xl border-2 font-black text-sm flex items-center justify-center gap-2 transition-all ${
-                  !isSubmerged
-                    ? "bg-teal-950/40 border-teal-400 text-teal-300 shadow-[0_0_15px_rgba(20,184,166,0.3)]"
-                    : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700"
-                }`}
-              >
-                <ArrowUpCircle className="w-5 h-5" /> SURFACE (COME OUT & BREATHE)
-              </button>
             </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

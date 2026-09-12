@@ -1,25 +1,24 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { database } from "@/lib/firebase";
 import { ref, onValue, update } from "firebase/database";
 import { useAuth } from "@/context/AuthContext";
 import { useRouter } from "next/navigation";
-import { resolveRound5Iteration, R5Item, resetToLobby } from "@/lib/gameEngine";
-import { 
-  Trophy, 
-  Skull, 
-  AlertTriangle, 
-  Clock, 
-  FastForward, 
-  CheckCircle2, 
-  Brain, 
-  Shuffle, 
-  RotateCcw,
-  Sparkles,
-  Plane
+import { resolveRound5Iteration, resetToLobby } from "@/lib/gameEngine";
+import {
+  Trophy,
+  AlertTriangle,
+  Clock,
+  FastForward,
+  CheckCircle2,
+  Brain,
+  Layers,
+  Plane,
 } from "lucide-react";
 import { EliminationScreen } from "@/components/game/EliminationScreen";
+import { Header } from "@/components/theme/Header";
+import { RulesModal } from "@/components/game/RulesModal";
 
 export default function Round5Page() {
   const { user } = useAuth();
@@ -27,118 +26,100 @@ export default function Round5Page() {
 
   const [r5State, setR5State] = useState<any>(null);
   const [playerStatus, setPlayerStatus] = useState<string>("alive");
-  const [survivorCount, setSurvivorCount] = useState<number>(0);
+  const [players, setPlayers] = useState<Record<string, any>>({});
 
-  // Local phase: "memorize" (30s) or "recall" (player entering numbers)
-  const [phase, setPhase] = useState<"memorize" | "recall" | "evaluating">("memorize");
-  const [countdown, setCountdown] = useState<number>(30);
-
-  // Player answers: planeId -> entered number
-  const [inputs, setInputs] = useState<Record<string, string>>({});
-  const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
+  // Local state — reset on each iteration
+  const [memorizeTimeLeft, setMemorizeTimeLeft] = useState<number>(30);
+  const [userGuesses, setUserGuesses] = useState<Record<string, number>>({});
+  const [hasSubmitted, setHasSubmitted] = useState<boolean>(false);
   const [resolving, setResolving] = useState<boolean>(false);
-  const [isWinner, setIsWinner] = useState<boolean>(false);
+  const [showRules, setShowRules] = useState(true);
 
-  // Subscribe to Firebase state
+  // Track previous iteration to detect changes
+  const prevIterationRef = useRef<number>(1);
+
   useEffect(() => {
     const unsubR5 = onValue(ref(database, "gameState/round5"), (snap) => {
-      const data = snap.val();
-      setR5State(data);
-      if (data?.phase === "done") {
-        setIsWinner(true);
+      const val = snap.val();
+      setR5State(val);
+
+      if (!val) return;
+      const newIteration: number = val.iteration || 1;
+
+      // Detect iteration change → reset all local state
+      if (newIteration !== prevIterationRef.current) {
+        prevIterationRef.current = newIteration;
+        setUserGuesses({});
+        setHasSubmitted(false);
+        setMemorizeTimeLeft(30);
       }
     });
-
+    const unsubPlayers = onValue(ref(database, "players"), (snap) => {
+      setPlayers(snap.val() || {});
+    });
     let unsubUser = () => {};
     if (user) {
       unsubUser = onValue(ref(database, `players/${user.uid}/status`), (snap) => {
         setPlayerStatus(snap.val() || "alive");
       });
     }
-
-    const unsubPlayers = onValue(ref(database, "players"), (snap) => {
-      const all = snap.val() || {};
-      const alive = Object.values(all).filter((p: any) => p.status === "alive");
-      setSurvivorCount(alive.length);
-    });
-
-    return () => {
-      unsubR5();
-      unsubUser();
-      unsubPlayers();
-    };
+    return () => { unsubR5(); unsubPlayers(); unsubUser(); };
   }, [user]);
 
-  // Memorization 30-second timer
+  const phase = r5State?.phase || "memorize";
+  const sequence: any[] = r5State?.sequence || [];
+  const shuffled: any[] = r5State?.shuffled || [];
+
+  // Memorize countdown (runs per iteration + phase)
   useEffect(() => {
-    if (phase !== "memorize") return;
+    if (phase !== "memorize" || showRules) return;
+
+    setMemorizeTimeLeft(30);
 
     const timer = setInterval(() => {
-      setCountdown((prev) => {
+      setMemorizeTimeLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timer);
-          setPhase("recall");
+          update(ref(database), { "gameState/round5/phase": "recall" });
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
-
     return () => clearInterval(timer);
-  }, [phase]);
+  // phase and iteration together trigger the effect
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, r5State?.iteration, showRules]);
 
-  const sequence: R5Item[] = useMemo(() => {
-    return r5State?.sequence || [];
-  }, [r5State]);
-
-  const shuffled: R5Item[] = useMemo(() => {
-    return r5State?.shuffled || [];
-  }, [r5State]);
-
-  const handleSkipMemorize = () => {
-    setPhase("recall");
-    setCountdown(0);
+  const handleSkipMemorize = async () => {
+    await update(ref(database), { "gameState/round5/phase": "recall" });
   };
 
-  const handleInputChange = (planeId: string, val: string) => {
-    setInputs((prev) => ({ ...prev, [planeId]: val }));
+  const handleSelectRank = (planeId: string, rank: number) => {
+    if (hasSubmitted) return;
+    setUserGuesses((prev) => ({ ...prev, [planeId]: rank }));
   };
 
-  const handleSubmitAnswers = async () => {
-    if (!user || isSubmitted || playerStatus !== "alive") return;
-    setIsSubmitted(true);
-    setPhase("evaluating");
-
-    // Convert string inputs to numbers
-    const parsed: Record<string, number> = {};
-    Object.entries(inputs).forEach(([pid, v]) => {
-      parsed[pid] = parseInt(v, 10);
-    });
-
+  const handleSubmitRecall = async () => {
+    if (!user || hasSubmitted) return;
+    setHasSubmitted(true);
     await update(ref(database), {
-      [`gameState/round5/answers/${user.uid}`]: parsed,
+      [`gameState/round5/answers/${user.uid}`]: userGuesses,
     });
-
-    // Trigger evaluation
-    handleResolve();
   };
 
-  const handleResolve = async () => {
+  const { survivorCount, isWinner } = useMemo(() => {
+    const aliveList = Object.values(players).filter((p) => p.status === "alive");
+    const winner = aliveList.length === 1 && aliveList[0].id === user?.uid;
+    return { survivorCount: aliveList.length, isWinner: winner };
+  }, [players, user]);
+
+  const handleTriggerEvaluation = async () => {
     if (resolving) return;
     setResolving(true);
     try {
-      const res = await resolveRound5Iteration();
-      if (!res.done) {
-        // Reset local state for next iteration
-        setInputs({});
-        setIsSubmitted(false);
-        setPhase("memorize");
-        setCountdown(30);
-      } else {
-        if (res.survivors.includes(user?.uid || "")) {
-          setIsWinner(true);
-        }
-      }
+      await resolveRound5Iteration();
+      // Local state reset happens via the Firebase listener detecting iteration change
     } catch (e) {
       console.error(e);
     } finally {
@@ -146,14 +127,15 @@ export default function Round5Page() {
     }
   };
 
-  const amEliminated = playerStatus === "eliminated" || r5State?.eliminated?.[user?.uid || ""];
+  const amEliminated =
+    playerStatus === "eliminated" || r5State?.eliminated?.[user?.uid || ""];
 
   if (amEliminated) {
     return (
       <EliminationScreen
         title="SEQUENCE FAILED"
-        message="Your flight order recall was corrupted. You have been erased in the final trial."
-        roundName="FINAL TRIAL // DEJA VU"
+        message="Your flight order recall was corrupted. You have been expunged in the final trial."
+        roundName="FINAL TRIAL // DEJA VU [♥ HEARTS]"
         autoRedirectSeconds={5}
       />
     );
@@ -161,29 +143,29 @@ export default function Round5Page() {
 
   if (isWinner) {
     return (
-      <div className="min-h-screen bg-[#030712] flex flex-col items-center justify-center p-6 text-center font-mono relative overflow-hidden">
-        <div className="fixed inset-0 bg-radial-vignette pointer-events-none" />
-        <div className="relative z-10 max-w-md">
-          <div className="p-5 bg-yellow-500/10 border-2 border-yellow-400 rounded-3xl inline-block mb-6 shadow-[0_0_50px_rgba(250,204,21,0.3)]">
-            <Trophy className="w-16 h-16 text-yellow-400 animate-bounce" />
+      <div className="min-h-screen bg-[#0e0e0e] text-[#e5e2e1] flex flex-col items-center justify-center p-6 text-center font-mono relative overflow-hidden select-none">
+        <div className="fixed inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,84,75,0.2)_0%,_transparent_70%)] pointer-events-none" />
+        <div className="relative z-10 max-w-lg bg-[#131313] border-2 border-[#ff544b] p-8 shadow-[0_0_60px_rgba(255,84,75,0.6)]">
+          <div className="p-5 bg-[#920703]/30 border-2 border-[#ff544b] rounded-2xl inline-block mb-6 shadow-[0_0_30px_rgba(255,84,75,0.5)]">
+            <Trophy className="w-16 h-16 text-[#ff544b] animate-bounce" />
           </div>
-          <h1 className="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-white to-amber-500 mb-3">
+          <h1 className="font-['Cinzel'] text-4xl sm:text-5xl font-black text-[#ffdad6] tracking-wider uppercase mb-2">
             VICTORY ACHIEVED
           </h1>
-          <p className="text-sm font-bold text-yellow-300 tracking-widest uppercase mb-6">
-            SOLE SURVIVOR OF SKYNET:BORDERLAND
+          <p className="text-xs font-bold text-[#ff544b] tracking-[0.25em] uppercase mb-6">
+            SOLE SURVIVOR OF SKYNET BORDERLAND
           </p>
-          <div className="p-4 rounded-xl bg-black border border-yellow-500/30 text-xs text-zinc-400 mb-8 leading-relaxed">
-            You conquered all 5 trials: Flight 404, Fishing, Redline, Same Page, and Deja Vu. You are the ultimate survivor.
+          <div className="p-4 bg-[#0e0e0e] border border-[#ff544b]/40 text-xs text-[#e9bcb7] mb-8 leading-relaxed font-sans">
+            You conquered all 5 trials: Flight 404, Fishing, Redline, Rapid Fire, and Deja Vu. You alone have exfiltrated the Borderland.
           </div>
           <button
             onClick={async () => {
               await resetToLobby(user?.uid);
               router.push("/lobby");
             }}
-            className="px-8 py-4 bg-yellow-400 hover:bg-yellow-300 text-black font-black text-sm tracking-widest uppercase rounded-xl transition-all shadow-[0_0_20px_rgba(250,204,21,0.4)]"
+            className="w-full py-4 bg-[#ff544b] hover:bg-[#ffb4ab] text-[#5c0005] font-mono font-black text-xs sm:text-sm tracking-[0.25em] uppercase transition-all shadow-[0_0_30px_rgba(255,84,75,0.6)] cursor-pointer"
           >
-            RETURN TO LOBBY & START AGAIN
+            RETURN TO LOBBY &amp; RESTART
           </button>
         </div>
       </div>
@@ -191,151 +173,213 @@ export default function Round5Page() {
   }
 
   return (
-    <div className="min-h-screen bg-[#030712] text-zinc-300 font-mono p-4 md:p-8">
-      <header className="max-w-4xl mx-auto mb-8 flex items-center justify-between">
-        <div>
-          <div className="text-yellow-400 font-bold text-xs tracking-widest mb-1">FINAL TRIAL // ROUND 05</div>
-          <h1 className="text-3xl font-black text-white">DEJA VU // SAME MOMENT. DIFFERENT TRUTH</h1>
-        </div>
+    <div className="min-h-screen bg-[#0e0e0e] text-[#e5e2e1] font-mono flex flex-col justify-between select-none">
+      {showRules && (
+        <RulesModal roundIndex={4} onDismiss={() => setShowRules(false)} />
+      )}
+      <Header />
 
-        <div className="flex items-center gap-4">
-          <div className="px-3 py-1.5 rounded-lg border border-yellow-500/30 bg-yellow-950/20 text-xs text-yellow-400 font-bold">
-            SURVIVORS: {survivorCount}
-          </div>
-          {phase === "memorize" && (
-            <button
-              onClick={handleSkipMemorize}
-              className="flex items-center gap-1 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded text-xs font-bold text-white transition-colors"
-            >
-              <FastForward className="w-3 h-3" /> SKIP (30s)
-            </button>
-          )}
-        </div>
-      </header>
-
-      <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Rules */}
-        <div className="md:col-span-1 space-y-4">
-          <div className="bg-yellow-950/20 border border-yellow-500/30 rounded-xl p-4">
-            <h2 className="text-yellow-400 font-bold text-sm mb-2 flex items-center gap-2">
-              <Brain className="w-4 h-4" /> TRIAL RULES
-            </h2>
-            <p className="text-xs text-yellow-200/70 mb-2 leading-relaxed">
-              1. Memorize the exact flight sequence displayed during the 30-second countdown.
-            </p>
-            <p className="text-xs text-yellow-200/70 mb-2 leading-relaxed">
-              2. When shuffled, type the original position number (1, 2, 3...) beside each flight callsign.
-            </p>
-            <p className="text-xs text-yellow-200/70 leading-relaxed font-bold">
-              3. Any mistake results in immediate deletion. Survives until only 1 player remains!
-            </p>
+      <div className="relative z-10 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-20 sm:pt-24 pb-8">
+        <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-[#1c1b1b] p-5 border border-[#353534] shadow-xl">
+          <div>
+            <div className="text-[#ff544b] font-bold text-xs tracking-[0.25em] mb-1 flex items-center gap-1.5">
+              <span>♥</span> <span>FINAL TRIAL // PSYCHOLOGICAL</span>
+            </div>
+            <h1 className="font-['Cinzel'] text-3xl font-black text-[#ffdad6] tracking-wider uppercase">
+              DEJA VU // THE FINAL SURVIVOR
+            </h1>
           </div>
 
-          <div className="bg-black/40 border border-zinc-800 rounded-lg p-4 text-xs space-y-1">
-            <div className="text-zinc-500 font-bold tracking-widest mb-1">ITERATION STATUS</div>
-            <div>CYCLE: <span className="text-yellow-400 font-bold">#{r5State?.iteration || 1}</span></div>
-            <div>STATUS: <span className="text-white font-mono uppercase">{phase}</span></div>
-          </div>
-        </div>
-
-        {/* Game Phase Content */}
-        <div className="md:col-span-2">
-          <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-6">
-            {phase === "memorize" ? (
-              <div>
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex items-center gap-2 text-xs font-bold text-yellow-400 uppercase tracking-widest">
-                    <Clock className="w-4 h-4" /> MEMORIZE CHRONOLOGY ({countdown}s)
-                  </div>
-                  <div className="text-xs text-zinc-500">Memorize the positions!</div>
-                </div>
-
-                <div className="space-y-3 mb-6">
-                  {sequence.map((item, idx) => (
-                    <div
-                      key={item.id || idx}
-                      className="p-4 rounded-xl border border-yellow-500/30 bg-black/60 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-4">
-                        <span className="w-8 h-8 rounded-full bg-yellow-400 text-black font-black text-sm flex items-center justify-center">
-                          {item.position}
-                        </span>
-                        <div>
-                          <div className="font-black text-white text-base flex items-center gap-2">
-                            <Plane className="w-4 h-4 text-yellow-400" /> {item.callsign}
-                          </div>
-                          <div className="text-[10px] text-zinc-500 font-mono">ID: {item.id}</div>
-                        </div>
-                      </div>
-                      <span className="text-xs text-yellow-400/80 font-mono font-bold">POSITION #{item.position}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <p className="text-center text-xs text-zinc-500 animate-pulse">
-                  Shuffle sequence begins in {countdown} seconds...
-                </p>
-              </div>
-            ) : (
-              <div>
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex items-center gap-2 text-xs font-bold text-cyan-400 uppercase tracking-widest">
-                    <Shuffle className="w-4 h-4" /> ENTER ORIGINAL POSITIONS
-                  </div>
-                  <div className="text-xs text-zinc-500">Type 1, 2, 3...</div>
-                </div>
-
-                <div className="space-y-3 mb-6">
-                  {shuffled.map((item, idx) => (
-                    <div
-                      key={item.id || idx}
-                      className="p-4 rounded-xl border border-zinc-800 bg-black/60 flex items-center justify-between gap-4"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Plane className="w-5 h-5 text-cyan-400" />
-                        <div>
-                          <div className="font-black text-white text-sm">{item.callsign}</div>
-                          <div className="text-[10px] text-zinc-500 font-mono">ID: {item.id}</div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-zinc-500">ORIGINAL POS:</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={sequence.length}
-                          disabled={isSubmitted}
-                          value={inputs[item.id] || ""}
-                          onChange={(e) => handleInputChange(item.id, e.target.value)}
-                          placeholder="?"
-                          className="w-16 p-2 rounded-lg bg-zinc-900 border-2 border-zinc-700 text-center text-white font-black text-base focus:border-yellow-400 focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex justify-center">
-                  <button
-                    disabled={isSubmitted || Object.keys(inputs).length < shuffled.length}
-                    onClick={handleSubmitAnswers}
-                    className="px-8 py-3.5 rounded-xl bg-yellow-400 hover:bg-yellow-300 text-black font-black text-sm tracking-widest uppercase transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(250,204,21,0.3)] flex items-center gap-2"
-                  >
-                    {isSubmitted ? (
-                      <>
-                        <CheckCircle2 className="w-5 h-5" /> VERIFYING CHRONOLOGY...
-                      </>
-                    ) : (
-                      "SUBMIT SEQUENCE"
-                    )}
-                  </button>
-                </div>
-              </div>
+          <div className="flex items-center gap-4">
+            <div className="px-3 py-1.5 border border-[#ff544b]/40 bg-[#920703]/20 text-xs text-[#ffdad6] font-bold font-mono">
+              SURVIVORS REMAINING: {survivorCount}
+            </div>
+            {phase === "memorize" && (
+              <button
+                onClick={handleSkipMemorize}
+                className="flex items-center gap-1 px-3 py-1.5 bg-[#201f1f] hover:bg-[#2a2a2a] border border-[#353534] text-xs font-bold text-[#ffb4ab] transition-colors cursor-pointer uppercase"
+              >
+                <FastForward className="w-3 h-3" /> SKIP ({memorizeTimeLeft}s)
+              </button>
             )}
           </div>
-        </div>
-      </main>
+        </header>
+
+        <main className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="md:col-span-1 space-y-4">
+            <div className="bg-[#1c1b1b] border border-[#ff544b]/30 p-4 shadow-md">
+              <h2 className="text-[#ffb4ab] font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-[#ff544b]" /> PROTOCOL RULES
+              </h2>
+              <p className="text-xs text-[#af8783] mb-2 leading-relaxed">
+                1. <span className="text-white font-bold">MEMORIZE</span>: Observe the exact sequential order of the aircraft during the countdown.
+              </p>
+              <p className="text-xs text-[#af8783] mb-2 leading-relaxed">
+                2. <span className="text-white font-bold">RECALL</span>: The aircraft will shuffle. Assign each aircraft back to its original slot.
+              </p>
+              <p className="text-xs text-[#ff544b] leading-relaxed font-bold">
+                3. Any mistake triggers immediate elimination. The trial repeats until ONLY 1 SURVIVOR remains.
+              </p>
+            </div>
+
+            <div className="bg-[#1c1b1b] border border-[#353534] p-4 shadow-sm">
+              <h3 className="text-xs font-bold text-[#af8783] tracking-widest uppercase mb-2 flex items-center gap-1.5">
+                <Brain className="w-4 h-4 text-[#ff544b]" /> TRIAL STATUS
+              </h3>
+              <div className="text-xs space-y-2 text-[#e5e2e1]">
+                <div>
+                  PHASE:{" "}
+                  <span className="text-[#ffdad6] font-bold uppercase">{phase}</span>
+                </div>
+                <div>
+                  CYCLE:{" "}
+                  <span className="text-white font-mono">ITERATION #{r5State?.iteration || 1}</span>
+                </div>
+                <div>
+                  AIRCRAFT ITEMS:{" "}
+                  <span className="text-[#ff544b] font-bold">{sequence.length}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="md:col-span-2">
+            <div className="bg-[#1c1b1b] border border-[#353534] p-6 shadow-xl">
+              {/* MEMORIZE PHASE */}
+              {phase === "memorize" && (
+                <div>
+                  <div className="flex items-center justify-between border-b border-[#353534] pb-4 mb-6">
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#ffb4ab] uppercase tracking-wider">
+                      <Layers className="w-4 h-4 text-[#ff544b]" /> MEMORIZE INITIAL FLIGHT POSITIONS
+                    </div>
+                    <div className="flex items-center gap-1 text-lg font-black text-[#ff544b] font-mono">
+                      <Clock className="w-5 h-5 text-[#ff544b]" /> {memorizeTimeLeft}s
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 mb-6">
+                    {sequence.map((item: any, index: number) => (
+                      <div
+                        key={item.planeId || item.id || index}
+                        className="p-4 bg-[#0e0e0e] border border-[#353534] flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-4">
+                          <span className="w-8 h-8 bg-[#201f1f] text-[#ffdad6] border border-[#353534] font-black text-sm flex items-center justify-center">
+                            {index + 1}
+                          </span>
+                          <div>
+                            <div className="font-bold text-white text-base flex items-center gap-2">
+                              <Plane className="w-4 h-4 text-[#ff544b]" /> {item.callsign}
+                            </div>
+                            <div className="text-xs text-[#af8783]">
+                              ALT: {item.altitude} ft • SPD: {item.speed} kts
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-xs text-[#ff544b] font-mono font-bold">
+                          POSITION #{index + 1}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-center text-xs text-[#af8783]">
+                    Cards will shuffle automatically when the countdown reaches 0s.
+                  </p>
+                </div>
+              )}
+
+              {/* RECALL PHASE */}
+              {phase === "recall" && (
+                <div>
+                  <div className="flex items-center justify-between border-b border-[#353534] pb-4 mb-6">
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#ffb4ab] uppercase tracking-wider">
+                      <Brain className="w-4 h-4 text-[#ff544b]" /> RECONSTRUCT ORIGINAL ORDER
+                    </div>
+                    <span className="text-xs text-[#ff544b] font-bold">
+                      {Object.keys(userGuesses).length} / {shuffled.length} SLOTS ASSIGNED
+                    </span>
+                  </div>
+
+                  <div className="space-y-4 mb-6">
+                    {shuffled.map((item: any) => {
+                      const chosenRank = userGuesses[item.planeId || item.id];
+                      return (
+                        <div
+                          key={item.planeId || item.id}
+                          className="p-4 bg-[#0e0e0e] border border-[#353534] flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                        >
+                          <div>
+                            <div className="font-bold text-white text-base flex items-center gap-2">
+                              <Plane className="w-4 h-4 text-[#ff544b]" /> {item.callsign}
+                            </div>
+                            <div className="text-xs text-[#af8783]">
+                              ALT: {item.altitude} ft • SPD: {item.speed} kts
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] text-[#af8783] mr-2">WAS SLOT:</span>
+                            {sequence.map((_: any, rIdx: number) => {
+                              const rankNum = rIdx + 1;
+                              const isSelected = chosenRank === rankNum;
+                              return (
+                                <button
+                                  key={rankNum}
+                                  disabled={hasSubmitted}
+                                  onClick={() =>
+                                    handleSelectRank(item.planeId || item.id, rankNum)
+                                  }
+                                  className={`w-8 h-8 rounded border font-bold text-xs transition-all cursor-pointer ${
+                                    isSelected
+                                      ? "bg-[#ff544b] border-white text-[#5c0005] font-black shadow-[0_0_10px_rgba(255,84,75,0.8)]"
+                                      : "bg-[#201f1f] border-[#353534] text-[#af8783] hover:text-white hover:border-[#5f3f3b]"
+                                  }`}
+                                >
+                                  {rankNum}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                    <button
+                      disabled={hasSubmitted || Object.keys(userGuesses).length < shuffled.length}
+                      onClick={handleSubmitRecall}
+                      className="px-8 py-3.5 bg-[#ff544b] hover:bg-[#ffb4ab] text-[#5c0005] font-mono font-black uppercase text-xs sm:text-sm tracking-[0.2em] rounded disabled:opacity-30 disabled:bg-[#353534] disabled:text-[#af8783] transition-colors flex items-center gap-2 cursor-pointer shadow-lg"
+                    >
+                      {hasSubmitted ? (
+                        <><CheckCircle2 className="w-5 h-5" /> RECALL RECORDED</>
+                      ) : (
+                        "LOCK IN RECONSTRUCTED SEQUENCE"
+                      )}
+                    </button>
+
+                    <button
+                      disabled={resolving}
+                      onClick={handleTriggerEvaluation}
+                      className="px-6 py-3.5 bg-[#201f1f] hover:bg-[#2a2a2a] text-[#ffdad6] border border-[#353534] font-mono font-bold uppercase text-xs tracking-wider transition-colors cursor-pointer"
+                    >
+                      {resolving ? "EVALUATING..." : "[ RESOLVE CYCLE ]"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {phase === "done" && (
+                <div className="text-center py-12">
+                  <div className="text-emerald-400 font-bold text-xl mb-2 font-mono">FINAL TRIAL COMPLETE</div>
+                  <div className="text-xs text-[#af8783]">The last survivor has been determined.</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
