@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { database } from "@/lib/firebase";
 import { ref, onValue, get, set, update, remove } from "firebase/database";
 import { PlayerCard, Player } from "@/components/game/PlayerCard";
+import { assignTeams } from "@/lib/teams";
 import { 
   Terminal, 
   Shield, 
@@ -21,7 +22,9 @@ import {
   Code2,
   RefreshCw,
   Lock,
-  Flame
+  Flame,
+  Users2,
+  Dice5
 } from "lucide-react";
 import Link from "next/link";
 
@@ -34,7 +37,7 @@ export default function LobbyPage() {
   const [copied, setCopied] = useState(false);
   const [isInjecting, setIsInjecting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
-  const [gmConsoleOpen, setGmConsoleOpen] = useState(true);
+  const [isShuffling, setIsShuffling] = useState(false);
   const [gmMessage, setGmMessage] = useState<string | null>(null);
   const [systemLogs, setSystemLogs] = useState<string[]>([
     "INITIALIZING ALICE_IN_HACKERLAND LOBBY NODE...",
@@ -113,6 +116,11 @@ export default function LobbyPage() {
   // Filter alive operatives count
   const aliveCount = players.length;
   const progressPercent = Math.min(100, Math.round((aliveCount / TARGET_MAX_PLAYERS) * 100));
+
+  // Team counts
+  const team1Players = players.filter((p) => p.teamId === "Team 1");
+  const team2Players = players.filter((p) => p.teamId === "Team 2");
+  const hasTeamsAssigned = team1Players.length > 0 || team2Players.length > 0;
 
   // Game Master Button: Generate dummy bot players up to 20
   const handleGenerateDummyBots = async () => {
@@ -195,6 +203,31 @@ export default function LobbyPage() {
       logMessage(`GM_ERROR: Injection failed: ${err.message}`);
     } finally {
       setIsInjecting(false);
+    }
+  };
+
+  // Game Master Button: Shuffle Teams (2 Teams)
+  const handleShuffleTeams = async () => {
+    setIsShuffling(true);
+    setGmMessage(null);
+    try {
+      logMessage("GM_COMMAND: Executing team randomization protocol across 2 squads...");
+      const result = await assignTeams(2);
+      if (result.success) {
+        const t1Count = result.teams["Team 1"]?.length || 0;
+        const t2Count = result.teams["Team 2"]?.length || 0;
+        setGmMessage(`TEAMS ASSIGNED: Team 1 (${t1Count} operatives) vs Team 2 (${t2Count} operatives).`);
+        logMessage(`GM_SUCCESS: Assigned ${result.totalAssigned} operatives into 2 teams.`);
+      } else {
+        setGmMessage(`TEAM ASSIGN WARNING: ${result.message}`);
+        logMessage(`GM_WARN: ${result.message}`);
+      }
+    } catch (err: any) {
+      console.error("Failed to shuffle teams:", err);
+      setGmMessage(`ERROR: ${err.message || "Failed to assign teams"}`);
+      logMessage(`GM_ERROR: Team assignment failed: ${err.message}`);
+    } finally {
+      setIsShuffling(false);
     }
   };
 
@@ -324,6 +357,19 @@ export default function LobbyPage() {
                 <span className="text-zinc-600">/</span>
                 <span className="text-zinc-400">{TARGET_MAX_PLAYERS} REQUIRED</span>
               </div>
+
+              {hasTeamsAssigned && (
+                <div className="flex items-center gap-3 text-xs">
+                  <span className="text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded border border-cyan-500/40 text-[11px] font-bold">
+                    TEAM 1: {team1Players.length}
+                  </span>
+                  <span className="text-zinc-600">VS</span>
+                  <span className="text-fuchsia-300 bg-fuchsia-950/80 px-2 py-0.5 rounded border border-fuchsia-500/40 text-[11px] font-bold">
+                    TEAM 2: {team2Players.length}
+                  </span>
+                </div>
+              )}
+
               <span className="text-xs text-zinc-400 font-mono">
                 {aliveCount >= TARGET_MAX_PLAYERS ? (
                   <span className="text-emerald-400 font-bold flex items-center gap-1">
@@ -460,11 +506,11 @@ export default function LobbyPage() {
 
               {/* Game Master Action Buttons */}
               <div className="flex flex-wrap items-center gap-3">
-                {/* Main Required GM Button: Generate Dummy Bots Up To 20 */}
+                {/* Main GM Button: Generate Dummy Bots Up To 20 */}
                 <button
                   onClick={handleGenerateDummyBots}
-                  disabled={isInjecting || isClearing}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(157,78,221,0.4)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
+                  disabled={isInjecting || isClearing || isShuffling}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(157,78,221,0.4)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
                 >
                   {isInjecting ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -472,14 +518,31 @@ export default function LobbyPage() {
                     <Bot className="w-4 h-4" />
                   )}
                   <span>
-                    {isInjecting ? "INJECTING SYNTHETICS..." : "⚡ FILL TO 20 BOTS (GM OVERRIDE)"}
+                    {isInjecting ? "INJECTING..." : "⚡ FILL TO 20 BOTS"}
+                  </span>
+                </button>
+
+                {/* Team Shuffle GM Button */}
+                <button
+                  onClick={handleShuffleTeams}
+                  disabled={isInjecting || isClearing || isShuffling || aliveCount === 0}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 via-teal-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(0,240,255,0.3)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
+                  title="Randomly shuffle and divide alive players into 2 teams"
+                >
+                  {isShuffling ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <span className="text-sm">🎲</span>
+                  )}
+                  <span>
+                    {isShuffling ? "SHUFFLING SQUADS..." : "🎲 SHUFFLE TEAMS (2 TEAMS)"}
                   </span>
                 </button>
 
                 {/* Clear Bots Utility */}
                 <button
                   onClick={handleClearBots}
-                  disabled={isInjecting || isClearing}
+                  disabled={isInjecting || isClearing || isShuffling}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 hover:border-red-500 text-zinc-300 hover:text-red-400 text-xs font-mono transition-colors disabled:opacity-50"
                   title="Purge all dummy bots from players node"
                 >

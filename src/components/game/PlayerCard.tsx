@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Bot, User, ShieldCheck, Zap, Radio } from "lucide-react";
+import { Bot, User, ShieldCheck, Zap, Radio, Users2 } from "lucide-react";
 
 export interface Player {
   id: string;
@@ -9,6 +9,7 @@ export interface Player {
   alias?: string;
   username?: string;
   status: "alive" | "eliminated" | "dead" | string;
+  teamId?: string;
   isBot?: boolean;
   avatar?: string;
   role?: string;
@@ -29,23 +30,49 @@ export const PlayerCard: React.FC<PlayerCardProps> = ({ player, index }) => {
   const isBot = player.isBot || displayName.toLowerCase().startsWith("bot") || player.role === "bot";
   const formattedIndex = String(index + 1).padStart(2, "0");
 
+  // Determine team badge styling
+  const isTeam1 = player.teamId === "Team 1";
+  const isTeam2 = player.teamId === "Team 2";
+
   return (
-    <div className="relative group overflow-hidden rounded-xl border border-cyan-500/20 bg-gradient-to-b from-[#0e172a]/90 to-[#070b14]/90 p-4 transition-all duration-300 hover:border-cyan-400 hover:shadow-[0_0_20px_rgba(0,240,255,0.25)] hover:-translate-y-1">
+    <div className={`relative group overflow-hidden rounded-xl border ${
+      player.teamId 
+        ? isTeam1 
+          ? "border-cyan-400/50 bg-gradient-to-b from-[#0a1e2e]/90 to-[#070b14]/90 shadow-[0_0_15px_rgba(0,240,255,0.15)]"
+          : "border-fuchsia-400/50 bg-gradient-to-b from-[#250d2e]/90 to-[#070b14]/90 shadow-[0_0_15px_rgba(255,0,127,0.15)]"
+        : "border-cyan-500/20 bg-gradient-to-b from-[#0e172a]/90 to-[#070b14]/90"
+    } p-4 transition-all duration-300 hover:border-cyan-400 hover:shadow-[0_0_20px_rgba(0,240,255,0.25)] hover:-translate-y-1`}>
       {/* Corner decorative accents */}
       <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
       <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-cyan-400" />
       <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-cyan-400" />
       <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-400" />
 
-      {/* Top row: Index & Status */}
+      {/* Top row: Index, Team Badge & Alive Status */}
       <div className="flex items-center justify-between text-xs mb-3 font-mono">
         <span className="text-zinc-500 flex items-center gap-1">
           <span className="text-cyan-400">#</span>
           {formattedIndex}
         </span>
-        <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 font-semibold tracking-wider text-[10px]">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          ALIVE
+
+        <div className="flex items-center gap-2">
+          {player.teamId && (
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold tracking-wider uppercase border ${
+              isTeam1
+                ? "bg-cyan-950/90 border-cyan-400/60 text-cyan-300 shadow-[0_0_10px_rgba(0,240,255,0.3)]"
+                : isTeam2
+                ? "bg-fuchsia-950/90 border-fuchsia-400/60 text-fuchsia-300 shadow-[0_0_10px_rgba(255,0,127,0.3)]"
+                : "bg-amber-950/90 border-amber-400/60 text-amber-300 shadow-[0_0_10px_rgba(255,184,0,0.3)]"
+            }`}>
+              <Users2 className="w-2.5 h-2.5" />
+              {player.teamId}
+            </span>
+          )}
+
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-500/40 text-emerald-400 font-semibold tracking-wider text-[10px]">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            ALIVE
+          </div>
         </div>
       </div>
 
@@ -93,7 +120,13 @@ export const PlayerCard: React.FC<PlayerCardProps> = ({ player, index }) => {
           <Radio className="w-3 h-3 text-emerald-400 animate-pulse" /> SYNCED
         </span>
         <span className="text-zinc-400 text-[10px]">
-          LATENCY: <span className="text-emerald-400">{Math.floor(Math.random() * 20) + 12}ms</span>
+          {player.teamId ? (
+            <span className={isTeam1 ? "text-cyan-400 font-semibold" : isTeam2 ? "text-fuchsia-400 font-semibold" : "text-amber-400"}>
+              AFFILIATION: {player.teamId}
+            </span>
+          ) : (
+            <>LATENCY: <span className="text-emerald-400">{Math.floor(Math.random() * 20) + 12}ms</span></>
+          )}
         </span>
       </div>
     </div>
