@@ -17,7 +17,7 @@ export interface Player {
   score?: number;
   ip?: string;
   level?: number;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 interface PlayerCardProps {
@@ -125,7 +125,7 @@ export const PlayerCard: React.FC<PlayerCardProps> = ({ player, index }) => {
               AFFILIATION: {player.teamId}
             </span>
           ) : (
-            <>LATENCY: <span className="text-emerald-400">{Math.floor(Math.random() * 20) + 12}ms</span></>
+            <>LATENCY: <span className="text-emerald-400">{12 + (index % 20)}ms</span></>
           )}
         </span>
       </div>
