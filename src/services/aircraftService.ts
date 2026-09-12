@@ -1,0 +1,3 @@
+export interface AircraftState { id:string; callsign:string; latitude:number; longitude:number; altitude:number; speed:number; heading:number; track:number; type:string; squawk:string; timestamp:number; source:"demo"|"live" }
+export const demoAircraft: AircraftState = { id:"a1", callsign:"AI204", latitude:16.51, longitude:80.64, altitude:31000, speed:428, heading:75, track:75, type:"A320", squawk:"1734", timestamp:Date.now(), source:"demo" };
+export function driftAircraft(aircraft:AircraftState):AircraftState { return {...aircraft, altitude:aircraft.altitude+Math.round(Math.random()*80-40), speed:aircraft.speed+Math.round(Math.random()*6-3), heading:(aircraft.heading+1)%360, track:(aircraft.track+1)%360, timestamp:Date.now()}; }
