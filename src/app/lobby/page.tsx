@@ -5,6 +5,8 @@ import { database } from "@/lib/firebase";
 import { ref, onValue, get, set, update, remove } from "firebase/database";
 import { PlayerCard, Player } from "@/components/game/PlayerCard";
 import { assignTeams } from "@/lib/teams";
+import { syncAirspaceToFirebase, Aircraft } from "@/lib/airplanes";
+import { TelemetryHUD } from "@/components/game/TelemetryHUD";
 import { 
   Terminal, 
   Shield, 
@@ -19,12 +21,13 @@ import {
   Copy, 
   Check, 
   AlertCircle,
+  AlertTriangle,
   Code2,
   RefreshCw,
   Lock,
   Flame,
-  Users2,
-  Dice5
+  Plane,
+  Radar
 } from "lucide-react";
 import Link from "next/link";
 
@@ -32,12 +35,16 @@ const TARGET_MAX_PLAYERS = 20;
 
 export default function LobbyPage() {
   const [players, setPlayers] = useState<Player[]>([]);
+  const [aircraftCount, setAircraftCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isInjecting, setIsInjecting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [isShuffling, setIsShuffling] = useState(false);
+  const [isSyncingAirspace, setIsSyncingAirspace] = useState(false);
+  const [isInitiatingStage, setIsInitiatingStage] = useState(false);
+  const [currentStage, setCurrentStage] = useState<number | null>(null);
   const [gmMessage, setGmMessage] = useState<string | null>(null);
   const [systemLogs, setSystemLogs] = useState<string[]>([
     "INITIALIZING ALICE_IN_HACKERLAND LOBBY NODE...",
@@ -54,13 +61,14 @@ export default function LobbyPage() {
     setSystemLogs((prev) => [`[${time}] ${msg}`, ...prev.slice(0, 7)]);
   };
 
-  // Subscribe to Firebase Realtime Database 'players' node
+  // Subscribe to Firebase Realtime Database 'players' & 'gameState/aircraftSnapshot' node
   useEffect(() => {
     try {
       const playersRef = ref(database, "players");
-      logMessage("SUBSCRIBED: RTDB node /players connected.");
+      const aircraftRef = ref(database, "gameState/aircraftSnapshot");
+      logMessage("SUBSCRIBED: RTDB nodes /players & gameState/aircraftSnapshot connected.");
 
-      const unsubscribe = onValue(
+      const unsubscribePlayers = onValue(
         playersRef,
         (snapshot) => {
           setLoading(false);
@@ -105,7 +113,41 @@ export default function LobbyPage() {
         }
       );
 
-      return () => unsubscribe();
+      const unsubscribeAircraft = onValue(
+        aircraftRef,
+        (snapshot) => {
+          const data = snapshot.val();
+          if (Array.isArray(data)) {
+            setAircraftCount(data.length);
+          } else if (data && typeof data === "object") {
+            setAircraftCount(Object.keys(data).length);
+          } else {
+            setAircraftCount(0);
+          }
+        },
+        (err) => {
+          console.warn("Aircraft snapshot read notice:", err);
+        }
+      );
+
+      const stageRef = ref(database, "gameState/currentStage");
+
+      const unsubscribeStage = onValue(
+        stageRef,
+        (snapshot) => {
+          const val = snapshot.val();
+          setCurrentStage(typeof val === "number" ? val : val ? Number(val) : null);
+        },
+        (err) => {
+          console.warn("Stage subscription notice:", err);
+        }
+      );
+
+      return () => {
+        unsubscribePlayers();
+        unsubscribeAircraft();
+        unsubscribeStage();
+      };
     } catch (e: any) {
       console.error("Firebase setup error:", e);
       setError(e.message || "Failed to initialize database connection");
@@ -231,6 +273,43 @@ export default function LobbyPage() {
     }
   };
 
+  // Game Master Button: Ping Airspace (Sync to DB)
+  const handlePingAirspace = async () => {
+    setIsSyncingAirspace(true);
+    setGmMessage(null);
+    try {
+      logMessage("GM_COMMAND: Intercepting live airspace radar (Lat: 40.7128, Lon: -74.0060, Dist: 50nm)...");
+      const result = await syncAirspaceToFirebase(40.7128, -74.0060, 50);
+      setGmMessage(`📡 AIRSPACE SYNCED: Intercepted ${result.count} aircraft telemetry targets -> gameState/aircraftSnapshot.`);
+      logMessage(`GM_SUCCESS: Telemetry captured. ${result.count} aircraft stored in Firebase RTDB.`);
+    } catch (err: any) {
+      console.error("Airspace telemetry sync failed:", err);
+      setGmMessage(`AIRSPACE SYNC ERROR: ${err.message || "Failed to sync flight radar"}`);
+      logMessage(`GM_ERROR: Radar intercept failed: ${err.message}`);
+    } finally {
+      setIsSyncingAirspace(false);
+    }
+  };
+
+  // High-Priority Game Master Action: Initiate Stage 1 (Flight 404)
+  const handleInitiateStage1 = async () => {
+    setIsInitiatingStage(true);
+    setGmMessage(null);
+    try {
+      logMessage("GM_COMMAND: ⚠️ Initiating Stage 1 (Flight 404)... Setting gameState/currentStage to 1");
+      const stageRef = ref(database, "gameState/currentStage");
+      await set(stageRef, 1);
+      setGmMessage("⚠️ STAGE 1 INITIATED: gameState/currentStage set to 1. Flight 404 protocol active.");
+      logMessage("GM_SUCCESS: Stage 1 active (gameState/currentStage = 1).");
+    } catch (err: any) {
+      console.error("Failed to initiate Stage 1:", err);
+      setGmMessage(`STAGE 1 INITIATION ERROR: ${err.message || "Failed to update gameState/currentStage"}`);
+      logMessage(`GM_ERROR: Stage 1 initiation failed: ${err.message}`);
+    } finally {
+      setIsInitiatingStage(false);
+    }
+  };
+
   // Game Master helper: Clear all synthetic bots
   const handleClearBots = async () => {
     setIsClearing(true);
@@ -304,7 +383,7 @@ export default function LobbyPage() {
                 <Terminal className="w-8 h-8 animate-pulse" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="px-2 py-0.5 text-[10px] font-bold tracking-widest bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 rounded">
                     SECTOR // 07
                   </span>
@@ -312,6 +391,12 @@ export default function LobbyPage() {
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                     LIVE RTDB NODE
                   </span>
+                  {typeof aircraftCount === "number" && aircraftCount > 0 && (
+                    <span className="flex items-center gap-1 text-[11px] text-sky-400 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-500/40">
+                      <Plane className="w-3 h-3" />
+                      RADAR: {aircraftCount} TARGETS
+                    </span>
+                  )}
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-white to-purple-400 mt-1">
                   ALICE IN HACKERLAND
@@ -336,13 +421,15 @@ export default function LobbyPage() {
               <Link
                 href="/rounds/round-1"
                 className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold tracking-wider uppercase transition-all shadow-lg ${
-                  aliveCount >= TARGET_MAX_PLAYERS
+                  currentStage === 1
+                    ? "bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black hover:opacity-95 shadow-[0_0_20px_rgba(245,158,11,0.6)] animate-pulse border border-yellow-300"
+                    : aliveCount >= TARGET_MAX_PLAYERS
                     ? "bg-gradient-to-r from-cyan-500 to-emerald-500 text-black hover:opacity-95 shadow-[0_0_20px_rgba(0,255,102,0.4)] animate-pulse"
                     : "bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-900/60"
                 }`}
               >
                 <Play className="w-4 h-4 fill-current" />
-                <span>{aliveCount >= TARGET_MAX_PLAYERS ? "INITIALIZE ROUND 1" : "ENTER ARENA"}</span>
+                <span>{currentStage === 1 ? "⚠️ ENTER FLIGHT 404 (STAGE 1)" : aliveCount >= TARGET_MAX_PLAYERS ? "INITIALIZE ROUND 1" : "ENTER ARENA"}</span>
               </Link>
             </div>
           </div>
@@ -403,6 +490,73 @@ export default function LobbyPage() {
           </div>
         )}
 
+        {/* Stage 1 Broadcast Banner */}
+        {currentStage === 1 && (
+          <div className="mb-6 p-4 rounded-xl border border-amber-500/50 bg-gradient-to-r from-amber-950/80 via-orange-950/70 to-black/80 text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_0_30px_rgba(245,158,11,0.2)]">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-400">
+                <AlertTriangle className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <span className="text-xs font-black tracking-widest text-amber-400 uppercase">
+                  CRITICAL BROADCAST // STAGE 1 INITIATED
+                </span>
+                <p className="text-xs text-zinc-300 mt-0.5">
+                  Flight 404 cabin sequence is active in Firebase RTDB. Operatives must enter the cabin to calibrate seat positions.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/rounds/round-1"
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black text-xs tracking-wider uppercase flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(245,158,11,0.5)]"
+            >
+              <span>BOARD CABIN &gt;&gt;</span>
+            </Link>
+          </div>
+        )}
+
+        {/* Operative Squad Summaries */}
+        {hasTeamsAssigned && (
+          <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="rounded-xl border border-cyan-500/40 bg-[#091524]/90 backdrop-blur-md p-4 flex items-center justify-between shadow-[0_0_15px_rgba(0,240,255,0.1)]">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-cyan-950/80 border border-cyan-400/40 text-cyan-400">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">SQUAD 01</span>
+                    <h4 className="text-sm font-black tracking-wider text-cyan-300 font-mono">TEAM 1 OPERATIVES</h4>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-0.5 font-mono">{team1Players.length} Active Agents</p>
+                </div>
+              </div>
+              <span className="text-2xl font-black text-cyan-300 font-mono">{team1Players.length}</span>
+            </div>
+
+            <div className="rounded-xl border border-fuchsia-500/40 bg-[#180922]/90 backdrop-blur-md p-4 flex items-center justify-between shadow-[0_0_15px_rgba(255,0,128,0.1)]">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-fuchsia-950/80 border border-fuchsia-400/40 text-fuchsia-400">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/40">SQUAD 02</span>
+                    <h4 className="text-sm font-black tracking-wider text-fuchsia-300 font-mono">TEAM 2 OPERATIVES</h4>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-0.5 font-mono">{team2Players.length} Active Agents</p>
+                </div>
+              </div>
+              <span className="text-2xl font-black text-fuchsia-300 font-mono">{team2Players.length}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Realtime Aircraft Telemetry HUD */}
+        <div className="mb-6">
+          <TelemetryHUD />
+        </div>
+
         {/* System Terminal & Network Logs */}
         <div className="mb-6 rounded-xl border border-zinc-800 bg-[#070d18]/80 p-3 text-xs font-mono">
           <div className="flex items-center justify-between text-[11px] text-zinc-500 pb-2 mb-2 border-b border-zinc-800/60">
@@ -410,9 +564,15 @@ export default function LobbyPage() {
               <Code2 className="w-3.5 h-3.5 text-cyan-400" />
               <span>LIVE SUBNET TERMINAL LOGS</span>
             </div>
-            <div className="flex items-center gap-2 text-[10px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>FIREBASE RTDB: /players</span>
+            <div className="flex items-center gap-4 text-[10px]">
+              <span className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                FIREBASE RTDB: /players
+              </span>
+              <span className="flex items-center gap-1 text-sky-400">
+                <Radar className="w-3 h-3 animate-spin" />
+                AIRSPACE: {aircraftCount !== null ? `${aircraftCount} TRACKED` : "READY"}
+              </span>
             </div>
           </div>
           <div className="space-y-1 font-mono text-[11px] text-zinc-400">
@@ -499,17 +659,34 @@ export default function LobbyPage() {
                     </span>
                   </div>
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Visible during development &bull; Directly mutates Firebase <code className="text-purple-300 font-bold">/players</code> node
+                    Visible during development &bull; Directly mutates Firebase <code className="text-purple-300 font-bold">/players</code> &amp; <code className="text-sky-300 font-bold">gameState</code>
                   </p>
                 </div>
               </div>
 
               {/* Game Master Action Buttons */}
               <div className="flex flex-wrap items-center gap-3">
+                {/* High-Priority GM Button: INITIATE STAGE 1 (FLIGHT 404) */}
+                <button
+                  onClick={handleInitiateStage1}
+                  disabled={isInitiatingStage || isInjecting || isClearing || isShuffling || isSyncingAirspace}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-red-600 hover:from-amber-400 hover:to-red-500 text-black font-black text-xs tracking-wider uppercase transition-all shadow-[0_0_25px_rgba(245,158,11,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 border-2 border-yellow-300 animate-pulse"
+                  title="Update Firebase Realtime Database node gameState/currentStage to 1"
+                >
+                  {isInitiatingStage ? (
+                    <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-black stroke-[2.5]" />
+                  )}
+                  <span>
+                    {isInitiatingStage ? "INITIATING..." : "⚠️ INITIATE STAGE 1 (FLIGHT 404)"}
+                  </span>
+                </button>
+
                 {/* Main GM Button: Generate Dummy Bots Up To 20 */}
                 <button
                   onClick={handleGenerateDummyBots}
-                  disabled={isInjecting || isClearing || isShuffling}
+                  disabled={isInjecting || isClearing || isShuffling || isSyncingAirspace}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(157,78,221,0.4)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
                 >
                   {isInjecting ? (
@@ -525,7 +702,7 @@ export default function LobbyPage() {
                 {/* Team Shuffle GM Button */}
                 <button
                   onClick={handleShuffleTeams}
-                  disabled={isInjecting || isClearing || isShuffling || aliveCount === 0}
+                  disabled={isInjecting || isClearing || isShuffling || isSyncingAirspace || aliveCount === 0}
                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 via-teal-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(0,240,255,0.3)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
                   title="Randomly shuffle and divide alive players into 2 teams"
                 >
@@ -539,10 +716,27 @@ export default function LobbyPage() {
                   </span>
                 </button>
 
+                {/* Airspace Telemetry Sync GM Button */}
+                <button
+                  onClick={handlePingAirspace}
+                  disabled={isInjecting || isClearing || isShuffling || isSyncingAirspace}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 via-blue-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 text-white font-bold text-xs tracking-wider uppercase transition-all shadow-[0_0_20px_rgba(14,165,233,0.35)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95"
+                  title="Ping airplanes.live API for live NYC airspace and sync to Firebase gameState/aircraftSnapshot"
+                >
+                  {isSyncingAirspace ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Radar className="w-4 h-4" />
+                  )}
+                  <span>
+                    {isSyncingAirspace ? "PINGING RADAR..." : "📡 PING AIRSPACE (SYNC TO DB)"}
+                  </span>
+                </button>
+
                 {/* Clear Bots Utility */}
                 <button
                   onClick={handleClearBots}
-                  disabled={isInjecting || isClearing || isShuffling}
+                  disabled={isInjecting || isClearing || isShuffling || isSyncingAirspace}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 hover:border-red-500 text-zinc-300 hover:text-red-400 text-xs font-mono transition-colors disabled:opacity-50"
                   title="Purge all dummy bots from players node"
                 >
