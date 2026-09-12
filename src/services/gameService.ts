@@ -1,0 +1,10 @@
+import { demoAircraft, type AircraftState } from "./aircraftService";
+
+export type PlayerStatus = "active" | "survived" | "eliminated";
+export interface MockPlayer { id:string; displayName:string; callsign:string; status:PlayerStatus; currentStage:number; teamId:string; lives:number; breath:number; score:number; connected:boolean }
+export interface GameEvent { time:string; message:string; level:"info"|"warning"|"critical" }
+export interface GameSession { currentStage:number; players:MockPlayer[]; aircraft:AircraftState[]; timer:number; events:GameEvent[]; selectedPlayer:string; stageStatus:"ready"|"live"|"paused"|"complete"; connectionStatus:"connected"|"replay"; dataMode:"DEMO"|"REPLAY" }
+export const mockPlayers: MockPlayer[]=[{id:"P-07",displayName:"PLAYER_07",callsign:"PHANTOM_07",status:"active",currentStage:1,teamId:"ALPHA",lives:3,breath:78,score:9842,connected:true},{id:"P-01",displayName:"PLAYER_01",callsign:"NIGHTFALL",status:"active",currentStage:1,teamId:"ALPHA",lives:3,breath:84,score:9130,connected:true},{id:"P-04",displayName:"PLAYER_04",callsign:"REDFOX",status:"active",currentStage:1,teamId:"ALPHA",lives:2,breath:61,score:8910,connected:true}];
+export const mockAircraft: AircraftState[]=[demoAircraft,{...demoAircraft,id:"a2",callsign:"ABC123",altitude:28500,speed:391,heading:112,track:112,latitude:17.2,longitude:81.2},{...demoAircraft,id:"a3",callsign:"XY742",altitude:34000,speed:447,heading:268,track:268,latitude:15.9,longitude:79.8}];
+export const createMockSession=():GameSession=>({currentStage:1,players:mockPlayers.map(p=>({...p})),aircraft:mockAircraft,timer:153,events:[{time:"05:10",message:"AIRCRAFT SNAPSHOT RECEIVED",level:"info"},{time:"05:02",message:"STAGE 01 READY",level:"info"},{time:"04:12",message:"P-07 ENTERED SECTOR",level:"info"}],selectedPlayer:"P-07",stageStatus:"ready",connectionStatus:"connected",dataMode:"DEMO"});
+export const gameService={getGameState:async()=>createMockSession(),getPlayers:async()=>mockPlayers, getAircraftSnapshot:async()=>mockAircraft};

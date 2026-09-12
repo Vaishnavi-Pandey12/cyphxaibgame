@@ -52,10 +52,10 @@ export async function assignTeams(numberOfTeams: number): Promise<{
       }))
       .filter(Boolean);
   } else if (typeof data === "object") {
-    playersList = Object.entries(data).map(([key, value]: [string, any]) => ({
+    playersList = Object.entries(data).map(([key, value]) => ({
       id: key,
-      ...value,
-    }));
+      ...(value as Record<string, unknown>),
+    } as Player));
   }
 
   // Filter only alive players
@@ -78,7 +78,7 @@ export async function assignTeams(numberOfTeams: number): Promise<{
   // Divide into numberOfTeams and distribute remainder sequentially starting from Team 1
   // Round-robin distribution: index % numberOfTeams gives team index 0, 1, ..., (numberOfTeams - 1)
   // This automatically distributes evenly and assigns any remainder sequentially starting from Team 1.
-  const updates: Record<string, any> = {};
+  const updates: Record<string, string> = {};
   const teamAssignments: Record<string, string[]> = {};
 
   for (let t = 1; t <= numberOfTeams; t++) {
