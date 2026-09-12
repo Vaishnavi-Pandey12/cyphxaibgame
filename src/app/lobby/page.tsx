@@ -7,6 +7,7 @@ import { PlayerCard, Player } from "@/components/game/PlayerCard";
 import { assignTeams } from "@/lib/teams";
 import { syncAirspaceToFirebase, Aircraft } from "@/lib/airplanes";
 import { TelemetryHUD } from "@/components/game/TelemetryHUD";
+import { AdminPanel } from "@/components/game/AdminPanel";
 import { 
   Terminal, 
   Shield, 
@@ -27,7 +28,8 @@ import {
   Lock,
   Flame,
   Plane,
-  Radar
+  Radar,
+  Megaphone
 } from "lucide-react";
 import Link from "next/link";
 
@@ -45,6 +47,8 @@ export default function LobbyPage() {
   const [isSyncingAirspace, setIsSyncingAirspace] = useState(false);
   const [isInitiatingStage, setIsInitiatingStage] = useState(false);
   const [currentStage, setCurrentStage] = useState<number | null>(null);
+  const [activeBroadcast, setActiveBroadcast] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"grid" | "admin">("grid");
   const [gmMessage, setGmMessage] = useState<string | null>(null);
   const [systemLogs, setSystemLogs] = useState<string[]>([
     "INITIALIZING ALICE_IN_HACKERLAND LOBBY NODE...",
@@ -143,10 +147,23 @@ export default function LobbyPage() {
         }
       );
 
+      const broadcastRef = ref(database, "gameState/broadcast");
+      const unsubscribeBroadcast = onValue(broadcastRef, (snapshot) => {
+        const val = snapshot.val();
+        if (typeof val === "string") {
+          setActiveBroadcast(val);
+        } else if (val && typeof val === "object" && val.message) {
+          setActiveBroadcast(val.message);
+        } else {
+          setActiveBroadcast(null);
+        }
+      });
+
       return () => {
         unsubscribePlayers();
         unsubscribeAircraft();
         unsubscribeStage();
+        unsubscribeBroadcast();
       };
     } catch (e: any) {
       console.error("Firebase setup error:", e);
@@ -348,6 +365,44 @@ export default function LobbyPage() {
     }
   };
 
+  // High-Priority Game Master Action: Initiate Stage 4 (Team Trust)
+  const handleInitiateStage4 = async () => {
+    setIsInitiatingStage(true);
+    setGmMessage(null);
+    try {
+      logMessage("GM_COMMAND: ⚠️ Initiating Stage 4 (Team Trust)... Setting gameState/currentStage to 4");
+      const stageRef = ref(database, "gameState/currentStage");
+      await set(stageRef, 4);
+      setGmMessage("⚠️ STAGE 4 INITIATED: gameState/currentStage set to 4. Team Trust protocol active.");
+      logMessage("GM_SUCCESS: Stage 4 active (gameState/currentStage = 4).");
+    } catch (err: any) {
+      console.error("Failed to initiate Stage 4:", err);
+      setGmMessage(`STAGE 4 INITIATION ERROR: ${err.message || "Failed to update gameState/currentStage"}`);
+      logMessage(`GM_ERROR: Stage 4 initiation failed: ${err.message}`);
+    } finally {
+      setIsInitiatingStage(false);
+    }
+  };
+
+  // High-Priority Game Master Action: Initiate Stage 5 (Memory Leak)
+  const handleInitiateStage5 = async () => {
+    setIsInitiatingStage(true);
+    setGmMessage(null);
+    try {
+      logMessage("GM_COMMAND: ⚠️ Initiating Stage 5 (Memory Leak)... Setting gameState/currentStage to 5");
+      const stageRef = ref(database, "gameState/currentStage");
+      await set(stageRef, 5);
+      setGmMessage("⚠️ STAGE 5 INITIATED: gameState/currentStage set to 5. Memory Leak protocol active.");
+      logMessage("GM_SUCCESS: Stage 5 active (gameState/currentStage = 5).");
+    } catch (err: any) {
+      console.error("Failed to initiate Stage 5:", err);
+      setGmMessage(`STAGE 5 INITIATION ERROR: ${err.message || "Failed to update gameState/currentStage"}`);
+      logMessage(`GM_ERROR: Stage 5 initiation failed: ${err.message}`);
+    } finally {
+      setIsInitiatingStage(false);
+    }
+  };
+
   // Game Master helper: Clear all synthetic bots
   const handleClearBots = async () => {
     setIsClearing(true);
@@ -458,14 +513,22 @@ export default function LobbyPage() {
 
               <Link
                 href={
-                  currentStage === 3
+                  currentStage === 5
+                    ? "/rounds/round-5"
+                    : currentStage === 4
+                    ? "/rounds/round-4"
+                    : currentStage === 3
                     ? "/rounds/round-3"
                     : currentStage === 2
                     ? "/rounds/round-2"
                     : "/rounds/round-1"
                 }
                 className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold tracking-wider uppercase transition-all shadow-lg ${
-                  currentStage === 3
+                  currentStage === 5
+                    ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white font-black hover:opacity-95 shadow-[0_0_20px_rgba(168,85,247,0.6)] animate-pulse border border-purple-300"
+                    : currentStage === 4
+                    ? "bg-gradient-to-r from-cyan-600 to-fuchsia-600 text-white font-black hover:opacity-95 shadow-[0_0_20px_rgba(217,70,239,0.6)] animate-pulse border border-fuchsia-300"
+                    : currentStage === 3
                     ? "bg-gradient-to-r from-red-600 to-pink-600 text-white font-black hover:opacity-95 shadow-[0_0_20px_rgba(239,68,68,0.6)] animate-pulse border border-red-300"
                     : currentStage === 2
                     ? "bg-gradient-to-r from-teal-500 to-cyan-500 text-black font-black hover:opacity-95 shadow-[0_0_20px_rgba(6,182,212,0.6)] animate-pulse border border-cyan-300"
@@ -478,7 +541,11 @@ export default function LobbyPage() {
               >
                 <Play className="w-4 h-4 fill-current" />
                 <span>
-                  {currentStage === 3
+                  {currentStage === 5
+                    ? "⚠️ ENTER MEMORY LEAK (STAGE 5)"
+                    : currentStage === 4
+                    ? "⚠️ ENTER TEAM TRUST (STAGE 4)"
+                    : currentStage === 3
                     ? "⚠️ ENTER LASER GRID (STAGE 3)"
                     : currentStage === 2
                     ? "⚠️ ENTER FISHING (STAGE 2)"
@@ -549,7 +616,7 @@ export default function LobbyPage() {
         )}
 
         {/* Active Stage Broadcast Banner */}
-        {typeof currentStage === "number" && currentStage >= 1 && currentStage <= 3 && (
+        {typeof currentStage === "number" && currentStage >= 1 && currentStage <= 5 && (
           <div className="mb-6 p-4 rounded-xl border border-amber-500/50 bg-gradient-to-r from-amber-950/80 via-orange-950/70 to-black/80 text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_0_30px_rgba(245,158,11,0.2)]">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-400">
@@ -560,29 +627,95 @@ export default function LobbyPage() {
                   CRITICAL BROADCAST // STAGE {currentStage} ACTIVE: {
                     currentStage === 1 ? "FLIGHT 404 (CABIN PROTOCOL)" :
                     currentStage === 2 ? "FISHING (DARK LAKE REBREATHER)" :
-                    "QUANTUM LASER GRID (5x5 MATRIX)"
+                    currentStage === 3 ? "QUANTUM LASER GRID (5x5 MATRIX)" :
+                    currentStage === 4 ? "PLANE (TEAM TRUST PROTOCOL)" :
+                    "MEMORY LEAK (INTERROGATION VOTING)"
                   }
                 </span>
                 <p className="text-xs text-zinc-300 mt-0.5">
                   {currentStage === 1 && "Flight 404 cabin decompression sequence engaged in Firebase RTDB. Calibrate your seat (1-20)."}
                   {currentStage === 2 && "The Jack's searchlight is sweeping the dark lake. Submerge into the depths to evade detection."}
                   {currentStage === 3 && "Quantum laser matrix activated. Realtime flight speed dictates lethal laser coordinates."}
+                  {currentStage === 4 && "Team isolation chambers locked. Submit your blind transmission to verify squad consensus."}
+                  {currentStage === 5 && "Airspace telemetry cache corrupted. Interrogate squad members and vote on who has the corrupted memory."}
                 </p>
               </div>
             </div>
             <Link
               href={
+                currentStage === 5 ? "/rounds/round-5" :
+                currentStage === 4 ? "/rounds/round-4" :
                 currentStage === 3 ? "/rounds/round-3" :
                 currentStage === 2 ? "/rounds/round-2" :
                 "/rounds/round-1"
               }
               className="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-black font-black text-xs tracking-wider uppercase flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-[0_0_15px_rgba(245,158,11,0.5)] flex-shrink-0"
             >
-              <span>{currentStage === 1 ? "BOARD CABIN >>" : currentStage === 2 ? "ENTER LAKE >>" : "ENTER MATRIX >>"}</span>
+              <span>{
+                currentStage === 1 ? "BOARD CABIN >>" :
+                currentStage === 2 ? "ENTER LAKE >>" :
+                currentStage === 3 ? "ENTER MATRIX >>" :
+                currentStage === 4 ? "ENTER ISOLATION >>" :
+                "ENTER INTERROGATION >>"
+              }</span>
             </Link>
           </div>
         )}
+        {activeBroadcast && (
+          <div className="mb-6 p-4 rounded-xl border-2 border-fuchsia-500 bg-gradient-to-r from-fuchsia-950/90 via-purple-950/80 to-black/90 text-fuchsia-200 flex items-center gap-3 shadow-[0_0_30px_rgba(217,70,239,0.35)] animate-pulse">
+            <div className="p-2 rounded-lg bg-fuchsia-500/20 border border-fuchsia-400/50 text-fuchsia-300">
+              <Megaphone className="w-5 h-5 text-fuchsia-400 animate-bounce" />
+            </div>
+            <div className="flex-1">
+              <div className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400">
+                ⚠️ GLOBAL GM DIRECTIVE // HIGH-PRIORITY TRANSMISSION
+              </div>
+              <div className="text-sm font-bold text-white font-mono mt-0.5 tracking-wide">
+                {activeBroadcast}
+              </div>
+            </div>
+          </div>
+        )}
 
+        {/* Navigation Tabs: Operative Grid vs GM Control Panel */}
+        <div className="mb-6 flex items-center justify-between border-b border-zinc-800 pb-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab("grid")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-xs font-bold transition-all ${
+                activeTab === "grid"
+                  ? "bg-cyan-500/20 border border-cyan-400 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
+                  : "bg-zinc-900/60 border border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
+              }`}
+            >
+              <Shield className="w-4 h-4" />
+              <span>OPERATIVE GRID ({aliveCount} ALIVE)</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("admin")}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-xs font-bold transition-all ${
+                activeTab === "admin"
+                  ? "bg-purple-500/20 border border-purple-400 text-purple-300 shadow-[0_0_15px_rgba(168,85,247,0.3)]"
+                  : "bg-zinc-900/60 border border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
+              }`}
+            >
+              <Cpu className="w-4 h-4" />
+              <span>GM MASTER CONTROL PANEL</span>
+            </button>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 text-[10px] font-mono text-zinc-500">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span>MODE: {activeTab === "admin" ? "GAME MASTER ROOT OVERRIDE" : "OPERATIVE FREQUENCY"}</span>
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === "admin" ? (
+          <div className="mb-8">
+            <AdminPanel />
+          </div>
+        ) : (
+          <>
         {/* Operative Squad Summaries */}
         {hasTeamsAssigned && (
           <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -785,6 +918,40 @@ export default function LobbyPage() {
                   </span>
                 </button>
 
+                {/* High-Priority GM Button: INITIATE STAGE 4 (TEAM TRUST) */}
+                <button
+                  onClick={handleInitiateStage4}
+                  disabled={isInitiatingStage || isInjecting || isClearing || isShuffling || isSyncingAirspace}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 via-indigo-600 to-fuchsia-600 hover:from-cyan-500 hover:to-fuchsia-500 text-white font-black text-xs tracking-wider uppercase transition-all shadow-[0_0_25px_rgba(217,70,239,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 border-2 border-fuchsia-400 animate-pulse cursor-pointer"
+                  title="Update Firebase Realtime Database node gameState/currentStage to 4"
+                >
+                  {isInitiatingStage ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 stroke-[2.5]" />
+                  )}
+                  <span>
+                    {isInitiatingStage ? "INITIATING..." : "⚠️ INITIATE STAGE 4 (TEAM TRUST)"}
+                  </span>
+                </button>
+
+                {/* High-Priority GM Button: INITIATE STAGE 5 (MEMORY LEAK) */}
+                <button
+                  onClick={handleInitiateStage5}
+                  disabled={isInitiatingStage || isInjecting || isClearing || isShuffling || isSyncingAirspace}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-700 via-purple-700 to-pink-700 hover:from-red-600 hover:to-pink-600 text-white font-black text-xs tracking-wider uppercase transition-all shadow-[0_0_25px_rgba(168,85,247,0.5)] disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 active:scale-95 border-2 border-purple-400 animate-pulse cursor-pointer"
+                  title="Update Firebase Realtime Database node gameState/currentStage to 5"
+                >
+                  {isInitiatingStage ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 stroke-[2.5]" />
+                  )}
+                  <span>
+                    {isInitiatingStage ? "INITIATING..." : "⚠️ INITIATE STAGE 5 (MEMORY LEAK)"}
+                  </span>
+                </button>
+
                 {/* Main GM Button: Generate Dummy Bots Up To 20 */}
                 <button
                   onClick={handleGenerateDummyBots}
@@ -856,6 +1023,8 @@ export default function LobbyPage() {
               </div>
             )}
           </div>
+        )}
+        </>
         )}
 
         {/* Footer info */}

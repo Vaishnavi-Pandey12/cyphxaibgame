@@ -20,6 +20,7 @@ import {
   RotateCcw
 } from "lucide-react";
 import Link from "next/link";
+import { BroadcastBanner } from "@/components/game/BroadcastBanner";
 
 export default function Round3Page() {
   const [gameState, setGameState] = useState<any>(null);
@@ -97,6 +98,9 @@ export default function Round3Page() {
       {/* Main Container */}
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex flex-col min-h-screen">
         
+        {/* Global GM Announcement Banner */}
+        <BroadcastBanner />
+
         {/* Top Header */}
         <header className="mb-6 rounded-2xl border border-red-500/40 bg-[#0c0612]/90 backdrop-blur-md p-4 sm:p-5 shadow-[0_0_30px_rgba(239,68,68,0.15)]">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">

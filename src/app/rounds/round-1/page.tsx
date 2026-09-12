@@ -5,6 +5,7 @@ import { database } from "@/lib/firebase";
 import { ref, onValue, set, update } from "firebase/database";
 import { Aircraft } from "@/lib/airplanes";
 import { CountdownTimer } from "@/components/game/CountdownTimer";
+import { BroadcastBanner } from "@/components/game/BroadcastBanner";
 import { 
   Plane, 
   Shield, 
@@ -176,6 +177,9 @@ export default function Round1Page() {
       {/* Main Container */}
       <div className="relative z-10 max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 flex flex-col min-h-screen">
         
+        {/* Global GM Announcement Banner */}
+        <BroadcastBanner />
+
         {/* Top Header & Navigation */}
         <header className="mb-6 rounded-2xl border border-cyan-500/30 bg-[#08111e]/90 backdrop-blur-md p-4 sm:p-5 shadow-[0_0_25px_rgba(0,240,255,0.12)]">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
